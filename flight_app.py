@@ -126,6 +126,10 @@ st.set_page_config(page_title="AI Group Flight Optimizer", page_icon="✈️")
 st.title("✈️ AI-Powered Group Flight Optimizer")
 st.markdown("Find the best way for your group to meet at a US hub and fly together to any international destination — using real flight data and Claude AI.")
 
+st.markdown("""
+> 💡 **Why I built this:** My family is spread across different US cities and planning trips together always meant hours of comparing flights and trying to figure out the optimal way for everyone to meet up. I built this tool to solve that problem.
+""")
+
 with st.expander("📌 How this app works & current limitations", expanded=True):
     st.markdown("""
 **What this app does:**
