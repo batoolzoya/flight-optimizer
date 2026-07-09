@@ -91,7 +91,7 @@ Hub: {i['hub']}
 
     optimization_note = {
         "Cheapest total for the group": "prioritize the lowest total group cost",
-        "Cheapest for the solo traveler (Traveler 1)": f"prioritize the lowest cost specifically for {trip['traveler1_name']}, the solo traveler flying alone",
+        "Cheapest for the solo traveler": f"prioritize the lowest cost specifically for {trip['traveler1_name']}, the solo traveler flying alone",
         "Shortest total travel time": "prioritize the fastest total travel time across all travelers",
         "Best balance of price and time": "find the best balance between cost and travel time"
     }[optimize_for]
@@ -169,7 +169,7 @@ optimize_for = st.selectbox(
     "Optimize for:",
     [
         "Cheapest total for the group",
-        "Cheapest for the solo traveler (Traveler 1)",
+        "Cheapest for the solo traveler",
         "Shortest total travel time",
         "Best balance of price and time"
     ]
