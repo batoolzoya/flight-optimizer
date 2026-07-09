@@ -307,4 +307,4 @@ elif search_button and not user_query:
     st.warning("Please describe your trip first.")
 
 st.divider()
-st.caption("Built with Python, SerpApi, Claude AI, Streamlit & GitHub | Developed with Claude as a coding collaborator")
+st.caption("Built with Python, SerpApi, Claude AI, Streamlit & GitHub")
