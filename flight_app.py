@@ -132,13 +132,13 @@ with st.expander("📌 How this app works & current limitations", expanded=True)
 Finds the best US hub city where two parties flying from different US cities can meet on direct flights, then fly together direct to an international destination.
 
 **To get the best results, your prompt should clearly mention:**
-- The name or label of each traveler (e.g. "S", "A & G", "my parents")
+- The name or label of each traveler (e.g. "Sarah", "A & E", "my parents")
 - The specific US city each traveler flies from
 - The international destination city you all want to reach
-- Note: Traveler 1 (the solo traveler) is used when optimizing for individual cost
+- Note: When optimizing for **"Cheapest for the solo traveler"**, the app minimizes cost for the **first traveler mentioned** in your prompt (e.g. "Sam & Sammy" in the example below)
 
 **Current limitations:**
-- Works for **2 US origin cities** only
+- Works for any **2 US origin cities**
 - Checks **20 major US hub airports**: JFK, EWR, ORD, LAX, IAD, ATL, BOS, DEN, DFW, SLC, SEA, MSP, SFO, PHX, MCO, IAH, MDW, LGA, DTW, MIA
 - Requires **direct flights only** at every leg — no connections
 - Not all hub-to-destination routes have direct flights; results depend on what airlines actually fly
