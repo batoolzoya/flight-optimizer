@@ -46,12 +46,12 @@ def get_claude_recommendation(itineraries, user_query):
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
     summary = ""
     for i in itineraries:
-        summary += f"""
+summary += f"""
 Hub: {i['hub']}
-  - S flies BZN → {i['hub']} on {i['bzn_airline']} for ${i['bzn_price']}
-  - A & G fly LIT → {i['hub']} on {i['lit_airline']} for ${i['lit_price']} each (${i['lit_price']*2} total)
-  - All three fly {i['hub']} → IST on {i['ist_airline']} for ${i['ist_price']} each (${i['ist_price']*3} total)
-  - Group total: ${i['total']}
+  - S flies BZN -> {i['hub']} on {i['bzn_airline']} for USD {i['bzn_price']}
+  - A & G fly LIT -> {i['hub']} on {i['lit_airline']} for USD {i['lit_price']} each (USD {i['lit_price']*2} total)
+  - All three fly {i['hub']} -> IST on {i['ist_airline']} for USD {i['ist_price']} each (USD {i['ist_price']*3} total)
+  - Group total: USD {i['total']}
 """
     prompt = f"""You are a helpful travel advisor. A user asked:
 
