@@ -247,7 +247,7 @@ if search_button and user_query:
 
     sort_key = {
         "Cheapest total for the group": "total",
-        "Cheapest for the solo traveler (Traveler 1)": "o1_price",
+        "Cheapest for the solo traveler": "o1_price",
         "Shortest total travel time": "total_duration",
         "Best balance of price and time": "total"
     }[optimize_for]
@@ -261,7 +261,7 @@ if search_button and user_query:
     # Display results
     y_axis = {
         "Cheapest total for the group": "total",
-        "Cheapest for the solo traveler (Traveler 1)": "o1_price",
+        "Cheapest for the solo traveler": "o1_price",
         "Shortest total travel time": "total_duration",
         "Best balance of price and time": "total"
     }[optimize_for]
