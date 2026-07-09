@@ -85,13 +85,13 @@ Hub: {i['hub']}
   - {trip['traveler2_names']} fly {trip['origin2_code']} -> {i['hub']} on {i['o2_airline']} for USD {i['o2_price']} each (USD {i['o2_price']*2} total)
   - All fly {i['hub']} -> {trip['destination_code']} on {i['dest_airline']} for USD {i['dest_price']} each (USD {i['dest_price']*3} total)
   - Group total: USD {i['total']}
-  - Cost per person: USD {i['per_person']}
+  - Solo traveler ({trip['traveler1_name']}) cost: USD {i['o1_price']}
   - Total travel time: {i['total_duration']} minutes
 """
 
     optimization_note = {
         "Cheapest total for the group": "prioritize the lowest total group cost",
-        "Cheapest per person": "prioritize the lowest cost per individual traveler",
+        "Cheapest for the solo traveler (Traveler 1)": f"prioritize the lowest cost specifically for {trip['traveler1_name']}, the solo traveler flying alone",
         "Shortest total travel time": "prioritize the fastest total travel time across all travelers",
         "Best balance of price and time": "find the best balance between cost and travel time"
     }[optimize_for]
@@ -102,14 +102,14 @@ Hub: {i['hub']}
 
 They want to {optimization_note}.
 
-Based on real flight data retrieved today, here are all viable itinerary options:
+Based on real flight data retrieved today, here are all viable itinerary options where everyone flies direct to a hub and then direct together to {trip['destination_name']}:
 
 {summary}
 
 Please recommend the best option based on their optimization preference. Include:
 1. Which hub city to meet at and why
 2. Each person's specific flight and cost
-3. Total cost and cost per person
+3. Total group cost and {trip['traveler1_name']}'s individual cost
 4. Total travel time
 5. One practical travel tip for {trip['destination_name']}
 Keep it friendly, clear and concise."""
@@ -135,17 +135,17 @@ Finds the best US hub city where two parties flying from different US cities can
 - The name or label of each traveler (e.g. "S", "A & G", "my parents")
 - The specific US city each traveler flies from
 - The international destination city you all want to reach
+- Note: Traveler 1 (the solo traveler) is used when optimizing for individual cost
 
 **Current limitations:**
 - Works for **2 US origin cities** only
 - Checks **20 major US hub airports**: JFK, EWR, ORD, LAX, IAD, ATL, BOS, DEN, DFW, SLC, SEA, MSP, SFO, PHX, MCO, IAH, MDW, LGA, DTW, MIA
 - Requires **direct flights only** at every leg — no connections
-- Optimizes based on your selected preference (total cost, per-person cost, time, or balance)
 - Not all hub-to-destination routes have direct flights; results depend on what airlines actually fly
 - Prices are real-time but may change by booking time
 
 **Example prompt:**
-> *S lives in La Crosse, WI and A & G live in San Antonio, TX. They all want to fly together to Paris. What is the cheapest way for the group to meet at a US hub on direct flights and then fly direct to Paris together?*
+> *Sam & Zoya lives in La Crosse, WI and Anne & Gary live in San Antonio, TX. They all want to fly together to Paris. What is the cheapest way for the group to meet at a US hub on direct flights and then fly direct to Paris together?*
 """)
 
 st.divider()
@@ -166,7 +166,7 @@ optimize_for = st.selectbox(
     "Optimize for:",
     [
         "Cheapest total for the group",
-        "Cheapest per person",
+        "Cheapest for the solo traveler (Traveler 1)",
         "Shortest total travel time",
         "Best balance of price and time"
     ]
@@ -226,7 +226,6 @@ if search_button and user_query:
         total = (cheapest_o1["price"] +
                  cheapest_o2["price"] * 2 +
                  cheapest_dest["price"] * 3)
-        per_person = round(total / 3)
         total_duration = (cheapest_o1["duration"] +
                          cheapest_o2["duration"] +
                          cheapest_dest["duration"])
@@ -240,39 +239,38 @@ if search_button and user_query:
             "dest_airline": cheapest_dest["airline"],
             "dest_price": cheapest_dest["price"],
             "total": total,
-            "per_person": per_person,
             "total_duration": total_duration
         })
 
-    # Sort based on optimization choice
     sort_key = {
         "Cheapest total for the group": "total",
-        "Cheapest per person": "per_person",
+        "Cheapest for the solo traveler (Traveler 1)": "o1_price",
         "Shortest total travel time": "total_duration",
-        "Best balance of price and time": "total"  # Claude handles nuance
+        "Best balance of price and time": "total"
     }[optimize_for]
+
     itineraries.sort(key=lambda x: x[sort_key])
 
     if not itineraries:
-        st.warning(f"No complete itineraries found with direct flights to {trip['destination_name']}. This destination may not have direct flights from the common hubs. Try different dates or a nearby major airport.")
+        st.warning(f"No complete itineraries found with direct flights to {trip['destination_name']}. Try different dates or a nearby major airport.")
         st.stop()
 
     # Display results
-    st.subheader(f"💰 Group Cost by Hub City (sorted by: {optimize_for})")
-    df = pd.DataFrame(itineraries)
-
     y_axis = {
         "Cheapest total for the group": "total",
-        "Cheapest per person": "per_person",
+        "Cheapest for the solo traveler (Traveler 1)": "o1_price",
         "Shortest total travel time": "total_duration",
         "Best balance of price and time": "total"
     }[optimize_for]
 
     y_label = {
         "total": "Total Group Cost (USD)",
-        "per_person": "Cost Per Person (USD)",
+        "o1_price": f"{trip['traveler1_name']}'s Cost (USD)",
         "total_duration": "Total Travel Time (minutes)"
     }[y_axis]
+
+    st.subheader(f"💰 Results by Hub City (sorted by: {optimize_for})")
+    df = pd.DataFrame(itineraries)
 
     fig = px.bar(
         df, x="hub", y=y_axis,
@@ -286,14 +284,13 @@ if search_button and user_query:
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("📋 All Options")
-    display_df = df[["hub", "o1_price", "o2_price", "dest_price", "total", "per_person", "total_duration"]].copy()
+    display_df = df[["hub", "o1_price", "o2_price", "dest_price", "total", "total_duration"]].copy()
     display_df.columns = [
         "Hub",
         f"{trip['traveler1_name']}: {trip['origin1_code']}→Hub",
         f"{trip['traveler2_names']}: {trip['origin2_code']}→Hub (each)",
         f"Hub→{trip['destination_code']} (each)",
         "Group Total",
-        "Per Person",
         "Total Duration (min)"
     ]
     st.dataframe(display_df, use_container_width=True)
