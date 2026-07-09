@@ -145,15 +145,14 @@ Finds the best US hub city where two parties flying from different US cities can
 - Prices are real-time but may change by booking time
 
 **Example prompt:**
-> *Sam & Zoya lives in La Crosse, WI and Anne & Gary live in San Antonio, TX. They all want to fly together to Paris. What is the cheapest way for the group to meet at a US hub on direct flights and then fly direct to Paris together?*
+> *Sam & Sammy live in La Crosse, WI and Anne & Annie live in San Antonio, TX. They all want to fly together to Paris. What is the cheapest way for the group to meet at a US hub and then fly to Paris together?*
 """)
 
 st.divider()
 
 user_query = st.text_area(
     "Describe your trip:",
-    placeholder="e.g. S lives in La Crosse, WI and A & G live in San Antonio, TX. They want to meet at a US hub on direct flights and then fly direct to Paris together.",
-    height=120
+    placeholder="Describe your group's trip — mention each traveler's name, their US city, and where you all want to fly together internationally.",
 )
 
 col1, col2 = st.columns(2)
