@@ -3,16 +3,50 @@ import pandas as pd
 import plotly.express as px
 from serpapi import GoogleSearch
 import anthropic
-
-# ── CONFIG ──────────────────────────────────────────────
 import os
+import json
+
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_KEY")
 
-HUBS = ["JFK", "EWR", "ORD", "LAX", "IAD", 
-        "ATL", "BOS", "DEN", "DFW", "SLC", "SEA", "MSP", "SFO"]
+# Expanded hub list
+HUBS = [
+    "JFK", "EWR", "ORD", "LAX", "IAD", "ATL", "BOS",
+    "DEN", "DFW", "SLC", "SEA", "MSP", "SFO",
+    "PHX", "MCO", "IAH", "MDW", "LGA", "DTW", "MIA"
+]
 
-# ── FLIGHT SEARCH ────────────────────────────────────────
+def extract_trip_details(user_query):
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    prompt = f"""Extract trip details from this request and return ONLY a JSON object, no other text:
+
+"{user_query}"
+
+Return exactly this format:
+{{
+  "origin1_code": "IATA airport code for first traveler's origin (e.g. BZN)",
+  "origin1_name": "City name for first origin",
+  "origin2_code": "IATA airport code for second traveler's origin (e.g. LIT)",
+  "origin2_name": "City name for second origin",
+  "destination_code": "IATA airport code for destination city (e.g. IST)",
+  "destination_name": "Full destination city name (e.g. Istanbul)",
+  "traveler1_name": "Name or label for first traveler (e.g. S)",
+  "traveler2_names": "Names or label for second travelers (e.g. A & G)"
+}}
+
+Important:
+- Use the closest major airport to each city mentioned
+- Return ONLY the JSON, no explanation"""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    response_text = message.content[0].text.strip()
+    response_text = response_text.replace("```json", "").replace("```", "").strip()
+    return json.loads(response_text)
+
 def search_direct_flights(origin, destination, date):
     params = {
         "engine": "google_flights",
@@ -41,31 +75,43 @@ def search_direct_flights(origin, destination, date):
             })
     return direct
 
-# ── CLAUDE RECOMMENDATION ────────────────────────────────
-def get_claude_recommendation(itineraries, user_query):
+def get_claude_recommendation(itineraries, user_query, trip, optimize_for):
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
     summary = ""
     for i in itineraries:
-summary += f"""
+        summary += f"""
 Hub: {i['hub']}
-  - S flies BZN -> {i['hub']} on {i['bzn_airline']} for USD {i['bzn_price']}
-  - A & G fly LIT -> {i['hub']} on {i['lit_airline']} for USD {i['lit_price']} each (USD {i['lit_price']*2} total)
-  - All three fly {i['hub']} -> IST on {i['ist_airline']} for USD {i['ist_price']} each (USD {i['ist_price']*3} total)
+  - {trip['traveler1_name']} flies {trip['origin1_code']} -> {i['hub']} on {i['o1_airline']} for USD {i['o1_price']}
+  - {trip['traveler2_names']} fly {trip['origin2_code']} -> {i['hub']} on {i['o2_airline']} for USD {i['o2_price']} each (USD {i['o2_price']*2} total)
+  - All fly {i['hub']} -> {trip['destination_code']} on {i['dest_airline']} for USD {i['dest_price']} each (USD {i['dest_price']*3} total)
   - Group total: USD {i['total']}
+  - Cost per person: USD {i['per_person']}
+  - Total travel time: {i['total_duration']} minutes
 """
+
+    optimization_note = {
+        "Cheapest total for the group": "prioritize the lowest total group cost",
+        "Cheapest per person": "prioritize the lowest cost per individual traveler",
+        "Shortest total travel time": "prioritize the fastest total travel time across all travelers",
+        "Best balance of price and time": "find the best balance between cost and travel time"
+    }[optimize_for]
+
     prompt = f"""You are a helpful travel advisor. A user asked:
 
 {user_query}
+
+They want to {optimization_note}.
 
 Based on real flight data retrieved today, here are all viable itinerary options:
 
 {summary}
 
-Please recommend the best option clearly and warmly. Include:
+Please recommend the best option based on their optimization preference. Include:
 1. Which hub city to meet at and why
 2. Each person's specific flight and cost
-3. Total cost for the group
-4. One practical travel tip
+3. Total cost and cost per person
+4. Total travel time
+5. One practical travel tip for {trip['destination_name']}
 Keep it friendly, clear and concise."""
 
     message = client.messages.create(
@@ -75,114 +121,190 @@ Keep it friendly, clear and concise."""
     )
     return message.content[0].text
 
-# ── STREAMLIT APP ────────────────────────────────────────
-st.set_page_config(page_title="AI Flight Optimizer", page_icon="✈️")
+# ── STREAMLIT APP ──────────────────────────────────────
+st.set_page_config(page_title="AI Group Flight Optimizer", page_icon="✈️")
 st.title("✈️ AI-Powered Group Flight Optimizer")
-st.markdown("Find the cheapest way for your group to meet and fly together — using real flight data and Claude AI.")
+st.markdown("Find the best way for your group to meet at a US hub and fly together to any international destination — using real flight data and Claude AI.")
+
+with st.expander("📌 How this app works & current limitations", expanded=True):
+    st.markdown("""
+**What this app does:**
+Finds the best US hub city where two parties flying from different US cities can meet on direct flights, then fly together direct to an international destination.
+
+**To get the best results, your prompt should clearly mention:**
+- The name or label of each traveler (e.g. "S", "A & G", "my parents")
+- The specific US city each traveler flies from
+- The international destination city you all want to reach
+
+**Current limitations:**
+- Works for **2 US origin cities** only
+- Checks **20 major US hub airports**: JFK, EWR, ORD, LAX, IAD, ATL, BOS, DEN, DFW, SLC, SEA, MSP, SFO, PHX, MCO, IAH, MDW, LGA, DTW, MIA
+- Requires **direct flights only** at every leg — no connections
+- Optimizes based on your selected preference (total cost, per-person cost, time, or balance)
+- Not all hub-to-destination routes have direct flights; results depend on what airlines actually fly
+- Prices are real-time but may change by booking time
+
+**Example prompt:**
+> *S lives in La Crosse, WI and A & G live in San Antonio, TX. They all want to fly together to Paris. What is the cheapest way for the group to meet at a US hub on direct flights and then fly direct to Paris together?*
+""")
 
 st.divider()
 
-# User input
 user_query = st.text_area(
     "Describe your trip:",
-    placeholder='e.g. S and his parents A&G want to fly to Istanbul together. S lives in Bozeman, MT and A&G live in North Little Rock, AR. They want direct flights only, meeting at a hub city on the same day, then flying to Istanbul together the next day.',
+    placeholder="e.g. S lives in La Crosse, WI and A & G live in San Antonio, TX. They want to meet at a US hub on direct flights and then fly direct to Paris together.",
     height=120
 )
 
-travel_date = st.date_input("Day everyone flies to the hub city:")
-istanbul_date = st.date_input("Day everyone flies to Istanbul:")
+col1, col2 = st.columns(2)
+with col1:
+    travel_date = st.date_input("Day everyone flies to the hub city:")
+with col2:
+    dest_date = st.date_input("Day everyone flies to destination:")
+
+optimize_for = st.selectbox(
+    "Optimize for:",
+    [
+        "Cheapest total for the group",
+        "Cheapest per person",
+        "Shortest total travel time",
+        "Best balance of price and time"
+    ]
+)
 
 search_button = st.button("Find Best Itinerary ✈️", type="primary")
 
 if search_button and user_query:
-    with st.spinner("Searching real-time flights..."):
-        travel_date_str = travel_date.strftime("%Y-%m-%d")
-        istanbul_date_str = istanbul_date.strftime("%Y-%m-%d")
 
-        # Search BZN → hubs
-        bzn_flights = []
+    with st.spinner("Reading your trip details with Claude..."):
+        try:
+            trip = extract_trip_details(user_query)
+            st.info(f"✅ Got it! Searching: **{trip['origin1_name']}** ({trip['origin1_code']}) + **{trip['origin2_name']}** ({trip['origin2_code']}) → hub → **{trip['destination_name']}** ({trip['destination_code']})")
+        except Exception as e:
+            st.error("Could not extract trip details. Please make sure your prompt mentions two US origin cities and an international destination clearly.")
+            st.stop()
+
+    travel_date_str = travel_date.strftime("%Y-%m-%d")
+    dest_date_str = dest_date.strftime("%Y-%m-%d")
+
+    with st.spinner(f"Searching direct flights from {trip['origin1_code']} to all hubs..."):
+        o1_flights = []
         for hub in HUBS:
-            bzn_flights.extend(search_direct_flights("BZN", hub, travel_date_str))
+            o1_flights.extend(search_direct_flights(trip['origin1_code'], hub, travel_date_str))
 
-        # Search LIT → hubs
-        lit_flights = []
+    with st.spinner(f"Searching direct flights from {trip['origin2_code']} to all hubs..."):
+        o2_flights = []
         for hub in HUBS:
-            lit_flights.extend(search_direct_flights("LIT", hub, travel_date_str))
+            o2_flights.extend(search_direct_flights(trip['origin2_code'], hub, travel_date_str))
 
-        # Find common hubs
-        bzn_hubs = set(f["destination"] for f in bzn_flights)
-        lit_hubs = set(f["destination"] for f in lit_flights)
-        common_hubs = bzn_hubs & lit_hubs
+    o1_hubs = set(f["destination"] for f in o1_flights)
+    o2_hubs = set(f["destination"] for f in o2_flights)
+    common_hubs = o1_hubs & o2_hubs
 
-        # Search common hubs → IST
-        ist_flights = []
+    if not common_hubs:
+        st.error(f"No common hub airports found with direct flights from both {trip['origin1_code']} and {trip['origin2_code']}. Try different dates or origin cities.")
+        st.stop()
+
+    with st.spinner(f"Searching direct flights from hubs to {trip['destination_name']}..."):
+        dest_flights = []
         for hub in common_hubs:
-            ist_flights.extend(search_direct_flights(hub, "IST", istanbul_date_str))
+            dest_flights.extend(search_direct_flights(hub, trip['destination_code'], dest_date_str))
 
-        # Build itineraries
-        itineraries = []
-        for hub in common_hubs:
-            bzn_options = [f for f in bzn_flights if f["destination"] == hub]
-            lit_options = [f for f in lit_flights if f["destination"] == hub]
-            ist_options = [f for f in ist_flights if f["origin"] == hub]
+    itineraries = []
+    for hub in common_hubs:
+        o1_options = [f for f in o1_flights if f["destination"] == hub]
+        o2_options = [f for f in o2_flights if f["destination"] == hub]
+        dest_options = [f for f in dest_flights if f["origin"] == hub]
 
-            if not bzn_options or not lit_options or not ist_options:
-                continue
+        if not o1_options or not o2_options or not dest_options:
+            continue
 
-            cheapest_bzn = min(bzn_options, key=lambda x: x["price"])
-            cheapest_lit = min(lit_options, key=lambda x: x["price"])
-            cheapest_ist = min(ist_options, key=lambda x: x["price"])
+        cheapest_o1 = min(o1_options, key=lambda x: x["price"])
+        cheapest_o2 = min(o2_options, key=lambda x: x["price"])
+        cheapest_dest = min(dest_options, key=lambda x: x["price"])
 
-            total = (cheapest_bzn["price"] +
-                     cheapest_lit["price"] * 2 +
-                     cheapest_ist["price"] * 3)
+        total = (cheapest_o1["price"] +
+                 cheapest_o2["price"] * 2 +
+                 cheapest_dest["price"] * 3)
+        per_person = round(total / 3)
+        total_duration = (cheapest_o1["duration"] +
+                         cheapest_o2["duration"] +
+                         cheapest_dest["duration"])
 
-            itineraries.append({
-                "hub": hub,
-                "bzn_airline": cheapest_bzn["airline"],
-                "bzn_price": cheapest_bzn["price"],
-                "lit_airline": cheapest_lit["airline"],
-                "lit_price": cheapest_lit["price"],
-                "ist_airline": cheapest_ist["airline"],
-                "ist_price": cheapest_ist["price"],
-                "total": total
-            })
+        itineraries.append({
+            "hub": hub,
+            "o1_airline": cheapest_o1["airline"],
+            "o1_price": cheapest_o1["price"],
+            "o2_airline": cheapest_o2["airline"],
+            "o2_price": cheapest_o2["price"],
+            "dest_airline": cheapest_dest["airline"],
+            "dest_price": cheapest_dest["price"],
+            "total": total,
+            "per_person": per_person,
+            "total_duration": total_duration
+        })
 
-        itineraries.sort(key=lambda x: x["total"])
+    # Sort based on optimization choice
+    sort_key = {
+        "Cheapest total for the group": "total",
+        "Cheapest per person": "per_person",
+        "Shortest total travel time": "total_duration",
+        "Best balance of price and time": "total"  # Claude handles nuance
+    }[optimize_for]
+    itineraries.sort(key=lambda x: x[sort_key])
 
-    if itineraries:
-        # Bar chart
-        st.subheader("💰 Total Group Cost by Hub City")
-        df = pd.DataFrame(itineraries)
-        fig = px.bar(
-            df, x="hub", y="total",
-            labels={"hub": "Hub City", "total": "Total Group Cost (USD)"},
-            color="total",
-            color_continuous_scale="blues",
-            text="total"
-        )
-        fig.update_traces(texttemplate='$%{text:,}', textposition='outside')
-        fig.update_layout(showlegend=False, coloraxis_showscale=False)
-        st.plotly_chart(fig, use_container_width=True)
+    if not itineraries:
+        st.warning(f"No complete itineraries found with direct flights to {trip['destination_name']}. This destination may not have direct flights from the common hubs. Try different dates or a nearby major airport.")
+        st.stop()
 
-        # Itinerary table
-        st.subheader("📋 All Options")
-        display_df = df[["hub", "bzn_price", "lit_price", "ist_price", "total"]].copy()
-        display_df.columns = ["Hub", "S: BZN→Hub", "A&G: LIT→Hub (each)", "Hub→IST (each)", "Group Total"]
-        display_df = display_df.sort_values("Group Total")
-        st.dataframe(display_df, use_container_width=True)
+    # Display results
+    st.subheader(f"💰 Group Cost by Hub City (sorted by: {optimize_for})")
+    df = pd.DataFrame(itineraries)
 
-        # Claude recommendation
-        st.subheader("🤖 Claude's Recommendation")
-        with st.spinner("Asking Claude for the best recommendation..."):
-            recommendation = get_claude_recommendation(itineraries, user_query)
-        st.markdown(recommendation)
+    y_axis = {
+        "Cheapest total for the group": "total",
+        "Cheapest per person": "per_person",
+        "Shortest total travel time": "total_duration",
+        "Best balance of price and time": "total"
+    }[optimize_for]
 
-    else:
-        st.error("No complete itineraries found. Try different dates.")
+    y_label = {
+        "total": "Total Group Cost (USD)",
+        "per_person": "Cost Per Person (USD)",
+        "total_duration": "Total Travel Time (minutes)"
+    }[y_axis]
+
+    fig = px.bar(
+        df, x="hub", y=y_axis,
+        labels={"hub": "Hub City", y_axis: y_label},
+        color=y_axis,
+        color_continuous_scale="blues",
+        text=y_axis
+    )
+    fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+    fig.update_layout(showlegend=False, coloraxis_showscale=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("📋 All Options")
+    display_df = df[["hub", "o1_price", "o2_price", "dest_price", "total", "per_person", "total_duration"]].copy()
+    display_df.columns = [
+        "Hub",
+        f"{trip['traveler1_name']}: {trip['origin1_code']}→Hub",
+        f"{trip['traveler2_names']}: {trip['origin2_code']}→Hub (each)",
+        f"Hub→{trip['destination_code']} (each)",
+        "Group Total",
+        "Per Person",
+        "Total Duration (min)"
+    ]
+    st.dataframe(display_df, use_container_width=True)
+
+    st.subheader("🤖 Claude's Recommendation")
+    with st.spinner("Asking Claude for the best recommendation..."):
+        recommendation = get_claude_recommendation(itineraries, user_query, trip, optimize_for)
+    st.markdown(recommendation)
 
 elif search_button and not user_query:
     st.warning("Please describe your trip first.")
 
 st.divider()
-st.caption("Built with Python, SerpApi, Claude AI, and Streamlit")
+st.caption("Built with Python, SerpApi, Claude AI, Streamlit & GitHub | Developed with Claude as a coding collaborator")
